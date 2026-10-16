@@ -15,7 +15,7 @@ fn rectangle() -> F {
     F::Def(100, vec![tag(b"ShpN")], vec![(tag(b"ShpB"), F::F64s(vec![0.0, 0.0, 10.0, 20.0])), (tag(b"Shpe"), F::Def(101, vec![tag(b"ShNR")], vec![]))])
 }
 
-fn document(definitions: Vec<F>, roots: Vec<F>) -> Document {
+fn document_bytes(definitions: Vec<F>, roots: Vec<F>) -> Vec<u8> {
     let data = synth::stream(&[
         (tag(b"Defs"), F::Shared(definitions)),
         (
@@ -34,7 +34,11 @@ fn document(definitions: Vec<F>, roots: Vec<F>) -> Document {
             ),
         ),
     ]);
-    read(&synth::container(&[("doc.dat", &data, Method::Zlib)], None), Limits::default()).unwrap()
+    synth::container(&[("doc.dat", &data, Method::Zlib)], None)
+}
+
+fn document(definitions: Vec<F>, roots: Vec<F>) -> Document {
+    read(&document_bytes(definitions, roots), Limits::default()).unwrap()
 }
 
 // A stack overflow aborts rather than unwinds. Keep that failure (and an exponential hang)
@@ -155,4 +159,54 @@ fn ordinary_shared_operands_keep_both_transformed_copies() {
         assert_eq!(b.x, a.x + 30.0);
         assert_eq!(b.y, a.y + 40.0);
     }
+}
+
+#[test]
+fn null_operand_slots_cannot_bypass_geometry_budget() {
+    isolated("null_operand_slots_cannot_bypass_geometry_budget", || {
+        let bytes = document_bytes(vec![compound(10, vec![F::Null; 1_000_000])], vec![F::Ref(10); 20_000]);
+        let start = Instant::now();
+        let doc = read(&bytes, Limits::default()).unwrap();
+        eprintln!("one million nulls / 20,000 placements: {} bytes, read {:.3}s", bytes.len(), start.elapsed().as_secs_f64());
+        unsupported(&doc, "compound geometry budget");
+        assert_eq!(doc.spreads[0].nodes.len(), 20_000);
+        assert!(doc.spreads[0].nodes.iter().all(|n| matches!(n.kind, Kind::Unsupported)));
+    });
+}
+
+#[test]
+fn null_operand_slots_share_budget_across_layer_roots() {
+    isolated("null_operand_slots_share_budget_across_layer_roots", || {
+        let doc = document(vec![compound(10, vec![F::Null; 1_000])], vec![F::Ref(10); 1_000]);
+        assert!(matches!(doc.spreads[0].nodes[0].kind, Kind::Shape { .. }), "a small empty compound remains valid");
+        assert!(matches!(doc.spreads[0].nodes.last().unwrap().kind, Kind::Unsupported));
+        assert!(doc.warnings.iter().any(|w| w.contains("compound geometry budget")));
+    });
+}
+
+#[test]
+fn null_operand_slots_cannot_leave_a_partial_shape() {
+    isolated("null_operand_slots_cannot_leave_a_partial_shape", || {
+        let mut slots = vec![F::Ref(100)];
+        slots.extend(vec![F::Null; 1_000_000]);
+        let doc = document(vec![rectangle(), compound(10, slots)], vec![F::Ref(10)]);
+        unsupported(&doc, "compound geometry budget");
+    });
+}
+
+#[test]
+fn non_object_operand_slots_also_consume_budget() {
+    isolated("non_object_operand_slots_also_consume_budget", || {
+        let comp = F::Def(10, vec![tag(b"Comp")], vec![(tag(b"Chld"), F::U8s(vec![0; 1_000_000]))]);
+        unsupported(&document(vec![comp], vec![F::Ref(10)]), "compound geometry budget");
+    });
+}
+
+#[test]
+fn ordinary_null_operand_slots_preserve_shared_contours() {
+    let doc = document(vec![rectangle(), compound(10, vec![F::Null, F::Ref(100), F::Null, F::Ref(100), F::Null])], vec![F::Ref(10)]);
+    assert!(doc.warnings.is_empty(), "{:?}", doc.warnings);
+    let Kind::Shape { path, .. } = &doc.spreads[0].nodes[0].kind else { panic!("expected compound outline") };
+    assert_eq!(path.subpaths.len(), 2);
+    assert_eq!(path.subpaths[0], path.subpaths[1]);
 }

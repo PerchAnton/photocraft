@@ -145,8 +145,10 @@ canvas. Every archive entry's CRC-32 and size must match. Malformed input return
 crate has no panics outside tests.
 
 Compound outlines have a separate active-reference cycle check and a depth cap of 64. Across
-the document, geometry expansion admits at most 500 000 outline visits and four million points
-created or copied into compounds. A compound that crosses a limit or contains a cycle is omitted
+the document, geometry expansion admits at most 500 000 combined outline calls and operand-slot
+visits (including nulls and non-object values), and four million points created or copied into
+compounds. Operand slots are charged before filtering, without first collecting an operand list.
+A compound that crosses a limit or contains a cycle is omitted
 with a warning as a whole; ordinary shared operands remain valid and keep each occurrence's transform.
 
 ## Privacy

@@ -24,6 +24,7 @@ impl Default for Budget {
 }
 
 impl Budget {
+    /// Charge an outline call or a raw compound operand slot before inspecting it.
     fn visit(&mut self) -> Result<(), &'static str> {
         self.visits_left = self.visits_left.checked_sub(1).ok_or("compound geometry budget exhausted")?;
         Ok(())
@@ -81,7 +82,13 @@ fn compound(r: &mut Reader, id: ObjId, world: Affine, active: &mut Vec<ObjId>) -
     // One path of all operands' contours, filled even-odd, as before. A safety failure rejects
     // the whole outline: a partial add/subtract shape could silently change its meaning.
     let mut path = Path::default();
-    for c in s.objs(id, b"Chld") {
+    // Charge every slot before filtering nulls or malformed values. Stream::objs would scan
+    // and allocate the whole list first, repeating uncharged work for each shared occurrence.
+    let children = if let Some(Value::Array(children)) = s.field(id, b"Chld") { children.as_slice() } else { &[] };
+    for child in children {
+        r.geometry_budget.visit()?;
+        let Value::Obj(Some(c)) = child else { continue };
+        let c = *c;
         let local = s.floats::<6>(c, b"Xfrm").map(Affine::from_xfrm).unwrap_or(Affine::IDENTITY);
         let Some(class) = s.class(c) else { return Ok(None) };
         if s.enumeration(c, b"ComO").is_some_and(|(op, _)| op != 0 && op != 2) {
