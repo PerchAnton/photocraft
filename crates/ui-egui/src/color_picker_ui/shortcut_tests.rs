@@ -7,16 +7,19 @@ use crate::{PhotocraftApp, Services, dialogs, menus, prefs_ui, shortcut_dispatch
 
 const PICKERS: [(&str, &str, Key); 2] = [("color.picker.foreground", "foreground", Key::P), ("color.picker.background", "background", Key::O)];
 
+/// Start without a document or platform callbacks to exercise global color shortcuts.
 fn app() -> PhotocraftApp {
     PhotocraftApp::new(photocraft_engine::Session::new(), Services::default())
 }
 
+/// Assign the two picker keys through the real shortcut dialog confirmation path.
 fn bind(app: &mut PhotocraftApp, ctx: &Context) {
     let id = menus::invoke(app, ctx, "edit.keyboardShortcuts", json!({})).unwrap()["dialog"].as_u64().unwrap();
     app.ui.dialog_mut(id).unwrap().fields.insert("overrides".into(), json!({"color.picker.foreground": "P", "color.picker.background": "O"}));
     dialogs::confirm(app, id).unwrap();
 }
 
+/// Begin a frame with a complete key press, text event and release, or no input.
 fn input(ctx: &Context, key: Option<Key>) {
     let events = key
         .map(|key| {
@@ -30,6 +33,7 @@ fn input(ctx: &Context, key: Option<Key>) {
     ctx.begin_pass(egui::RawInput { events, ..Default::default() });
 }
 
+/// Dispatch one key frame without drawing a widget that could consume the input.
 fn press(app: &mut PhotocraftApp, ctx: &Context, key: Key) {
     input(ctx, Some(key));
     shortcuts::handle(app, ctx);
@@ -37,6 +41,7 @@ fn press(app: &mut PhotocraftApp, ctx: &Context, key: Key) {
 }
 
 #[test]
+/// Keep both unbound picker entries in the existing single Tools shortcut group.
 fn picker_shortcuts_are_listed_once_in_the_single_tools_group_unbound() {
     let app = app();
     let items = prefs_ui::shortcut_items(&app);
@@ -58,6 +63,7 @@ fn picker_shortcuts_are_listed_once_in_the_single_tools_group_unbound() {
 }
 
 #[test]
+/// Open each target at every supported depth and preserve the existing OK/Cancel semantics.
 fn picker_commands_open_the_correct_color_and_reuse_ok_cancel() {
     let ctx = Context::default();
     for depth in [8, 16, 32] {
@@ -95,6 +101,7 @@ fn picker_commands_open_the_correct_color_and_reuse_ok_cancel() {
 }
 
 #[test]
+/// Reload assigned keys, open without a document, and obey keyboard and control modal guards.
 fn assigned_picker_keys_dispatch_and_do_not_stack_under_a_modal() {
     let mut app = app();
     let ctx = Context::default();
@@ -121,6 +128,7 @@ fn assigned_picker_keys_dispatch_and_do_not_stack_under_a_modal() {
 }
 
 #[test]
+/// Let a focused text widget receive the assigned letters without opening a picker.
 fn assigned_picker_letters_leave_text_input_alone() {
     let mut app = app();
     let ctx = Context::default();
@@ -140,6 +148,7 @@ fn assigned_picker_letters_leave_text_input_alone() {
 }
 
 #[test]
+/// Find both rows in the rendered dialog and optionally capture the native picker windows.
 fn unbound_picker_rows_are_visible_in_keyboard_shortcuts() {
     use egui_kittest::kittest::Queryable;
 
