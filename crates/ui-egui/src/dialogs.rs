@@ -261,7 +261,9 @@ pub(crate) fn close_box(ui: &mut egui::Ui, rect: egui::Rect) -> bool {
 }
 
 pub fn show(app: &mut PhotocraftApp, ctx: &egui::Context) {
-    crate::guide_edit::sync(app);
+    if crate::guide_edit::sync(app) {
+        ctx.request_repaint();
+    }
     crate::layer_style::color_picker::prune(app);
     crate::type_panels_ui::color_picker::prune(app);
     crate::edit_history::track_dialogs(app, ctx);
