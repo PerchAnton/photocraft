@@ -5,6 +5,9 @@ the document. OK sends one `view.editGuide` command; Cancel and Escape discard t
 An unchanged OK leaves Undo/Redo intact. Invalid text keeps the last valid preview and cannot
 commit. A document revision, target or ruler-unit change invalidates the draft; reopen the
 dialog to start again. Undoing a concurrent edit does not revive an old draft.
+If the final command is refused (for example by the automation policy), the dialog reopens
+with the typed fields, error and last valid preview. Retrying uses the original target and
+revision; switching documents or editing the target before retry still invalidates the draft.
 
 The UI uses [edit-session](https://github.com/PerchAnton/edit-session) at
 `28620b8264660ea84a182110cf5894da90281c42` for the draft lifecycle and no-op/stale checks.

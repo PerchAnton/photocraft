@@ -53,6 +53,7 @@ pub(crate) fn color_label(name: &str) -> &'static str {
     }
 }
 
+/// Accept the named guide colours and the explicit custom-colour choice.
 fn is_color_name(name: &str) -> bool {
     name == CUSTOM || GUIDE_COLORS.iter().any(|(n, ..)| *n == name)
 }
@@ -65,10 +66,12 @@ fn custom_color(f: &Map<String, Value>) -> String {
         .map_or_else(|| "#4affff".to_string(), str::to_string)
 }
 
+/// Identify the specialized New Guide or Edit Selected Guides dialog fields.
 pub fn owns(fields: &Map<String, Value>) -> bool {
     fields.contains_key(MARK)
 }
 
+/// Read the ruler unit used for guide positions without an explicit suffix.
 fn ruler_unit(app: &PhotocraftApp) -> Unit {
     app.session.prefs().units_and_rulers.rulers
 }
@@ -153,6 +156,7 @@ pub fn open_edit(app: &mut PhotocraftApp) -> Result<u64, String> {
     Ok(id)
 }
 
+/// Edit the dialog fields and show validation errors without changing the live guide.
 pub fn body(ui: &mut egui::Ui, f: &mut Map<String, Value>) {
     let mut orientation = f.get("orientation").and_then(Value::as_str).unwrap_or("horizontal").to_string();
     let mut position = f.get("position").and_then(Value::as_str).unwrap_or_default().to_string();
@@ -217,6 +221,7 @@ pub fn params(app: &PhotocraftApp, f: &Map<String, Value>) -> Value {
     }
 }
 
+/// Dispatch New Guide or guarded guide editing, retaining typed fields on a retryable error.
 pub fn confirm(app: &mut PhotocraftApp, f: &Map<String, Value>) -> Result<Value, String> {
     let params = params(app, f);
     if f.contains_key(EDIT) {
@@ -250,8 +255,8 @@ pub fn confirm(app: &mut PhotocraftApp, f: &Map<String, Value>) -> Result<Value,
 /// Edit Selected Guides' OK: the edited guide stays selected (at the end of the other list if it
 /// turned). A refused edit reopens the dialog, as New Guide does.
 fn confirm_edit(app: &mut PhotocraftApp, f: &Map<String, Value>) -> Result<Value, String> {
-    let params = match crate::guide_edit::finish(app, f) {
-        Ok(Some(params)) => params,
+    let (params, result) = match crate::guide_edit::finish(app, f) {
+        Ok(Some(applied)) => applied,
         Ok(None) => return Ok(Value::Null),
         Err(error) => {
             if crate::guide_edit::retryable(app) {
@@ -267,7 +272,6 @@ fn confirm_edit(app: &mut PhotocraftApp, f: &Map<String, Value>) -> Result<Value
             return Err(error);
         }
     };
-    let result = app.run(EDIT_COMMAND, params.clone())?;
     let (from, to) = (params["orientation"] == "vertical", params["newOrientation"] == "vertical");
     let index = if from == to {
         params["index"].as_u64().and_then(|i| usize::try_from(i).ok())

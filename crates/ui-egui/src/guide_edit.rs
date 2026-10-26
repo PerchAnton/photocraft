@@ -33,17 +33,20 @@ pub(crate) struct Draft {
     error: Option<String>,
 }
 
+/// Identity, revision, units and lock state that must still match at confirmation.
 fn context(app: &PhotocraftApp) -> Option<Context> {
     let st = app.session.active()?;
     let units = &app.session.prefs().units_and_rulers;
     Some(Context { doc: st.doc.id, revision: st.revision, rulers: units.rulers, points: units.point_size, locked: app.ui.extras.lock_guides })
 }
 
+/// Read a guide and its explicit colour without trusting a saved index.
 fn guide(g: &Guides, vertical: bool, index: usize) -> Option<Guide> {
     let position = *if vertical { &g.vertical } else { &g.horizontal }.get(index)?;
     Some(Guide { vertical, position, color: g.color(vertical, position) })
 }
 
+/// Decode a target only when its orientation and index are representable.
 fn target(f: &Value) -> Option<(bool, usize)> {
     let vertical = match f.get("orientation")?.as_str()? {
         "vertical" => true,
@@ -53,6 +56,7 @@ fn target(f: &Value) -> Option<(bool, usize)> {
     Some((vertical, usize::try_from(f.get("index")?.as_u64()?).ok()?))
 }
 
+/// Capture the original target and context, retiring any previous guide dialog.
 pub(crate) fn begin(app: &mut PhotocraftApp, dialog: u64, fields: &Map<String, Value>) -> Result<(), String> {
     let target_value = fields.get("__edit").ok_or("missing guide target")?;
     let (vertical, index) = target(target_value).ok_or("invalid guide target")?;
@@ -75,19 +79,23 @@ pub(crate) fn begin(app: &mut PhotocraftApp, dialog: u64, fields: &Map<String, V
     Ok(())
 }
 
+/// Read the live target for comparison with the draft's original context.
 fn current(app: &PhotocraftApp, draft: &Draft) -> Option<(Guide, Context)> {
     let (vertical, index) = target(&draft.target)?;
     Some((guide(&app.session.active()?.doc.guides, vertical, index)?, context(app)?))
 }
 
+/// Invalid text remains editable; a changed target or context requires a new draft.
 fn stale(app: &PhotocraftApp, draft: &Draft) -> bool {
     current(app, draft).is_none_or(|(live, ctx)| !matches!(draft.edit.check(&live, &ctx), Ok(()) | Err(FinishError::InvalidProposal)))
 }
 
+/// Allow retry only while the retained draft still belongs to the same live guide.
 pub(crate) fn retryable(app: &PhotocraftApp) -> bool {
     app.guide_edit.as_ref().is_some_and(|d| !stale(app, d))
 }
 
+/// Validate changed parameters on a COW document, retaining the last valid preview on error.
 fn prepare(app: &PhotocraftApp, draft: &mut Draft, fields: &Map<String, Value>) -> Result<(), String> {
     if stale(app, draft) || fields.get("__edit") != Some(&draft.target) {
         return Err("The document or guide changed. Reopen Edit Selected Guides.".into());
@@ -122,6 +130,7 @@ fn prepare(app: &PhotocraftApp, draft: &mut Draft, fields: &Map<String, Value>) 
     draft.edit.propose(result)
 }
 
+/// Keep the draft and its validation message available after either valid or invalid input.
 pub(crate) fn update(app: &mut PhotocraftApp, fields: &Map<String, Value>) -> Result<(), String> {
     let mut draft = app.guide_edit.take().ok_or("Reopen Edit Selected Guides to start an edit.")?;
     let result = prepare(app, &mut draft, fields);
@@ -130,15 +139,29 @@ pub(crate) fn update(app: &mut PhotocraftApp, fields: &Map<String, Value>) -> Re
     result
 }
 
-/// The GUI and automation share this path; a no-op emits no command, preserving Redo.
-pub(crate) fn finish(app: &mut PhotocraftApp, fields: &Map<String, Value>) -> Result<Option<Value>, String> {
+/// Commit once through the ordinary command path; a no-op preserves Redo.
+/// A command refusal restores the proposal against its original context for a guarded retry.
+pub(crate) fn finish(app: &mut PhotocraftApp, fields: &Map<String, Value>) -> Result<Option<(Value, Value)>, String> {
     update(app, fields)?;
-    let draft = app.guide_edit.take().ok_or("no guide draft")?;
+    let mut draft = app.guide_edit.take().ok_or("no guide draft")?;
     let (live, ctx) = current(app, &draft).ok_or("the guide is gone")?;
     let change = draft.edit.finish(&live, &ctx).map_err(|_| "The document or guide changed. Reopen Edit Selected Guides.")?;
-    Ok(change.and(draft.params))
+    let Some(change) = change else { return Ok(None) };
+    let params = draft.params.clone().ok_or("no guide parameters")?;
+    match app.run("view.editGuide", params.clone()) {
+        Ok(result) => Ok(Some((params, result))),
+        Err(error) => {
+            // Reuse the pre-command context, never a fresh document/revision. The caller's
+            // retryable check rejects this draft if the failed command changed that context.
+            draft.edit = EditSession::new(live, ctx);
+            draft.edit.propose::<String>(Ok(change.after))?;
+            app.guide_edit = Some(draft);
+            Err(error)
+        }
+    }
 }
 
+/// Discard only the draft owned by the closing dialog, without touching history.
 pub(crate) fn cancel(app: &mut PhotocraftApp, id: u64) {
     if app.guide_edit.as_ref().is_some_and(|d| d.dialog == id)
         && let Some(draft) = app.guide_edit.take()
@@ -156,19 +179,23 @@ pub(crate) fn sync(app: &mut PhotocraftApp) -> bool {
     };
     let old = app.guide_edit.as_ref().and_then(|d| d.params.clone());
     let result = update(app, &fields);
+    let changed = old != app.guide_edit.as_ref().and_then(|d| d.params.clone());
     if let Some(d) = app.ui.dialog_mut(id) {
         match result {
-            Ok(()) => {
+            Ok(()) if changed => {
                 d.fields.remove("__error");
             }
+            // Unchanged, valid parameters may still have a command-policy refusal to show.
+            Ok(()) => {}
             Err(error) => {
                 d.fields.insert("__error".into(), Value::String(error));
             }
         }
     }
-    old != app.guide_edit.as_ref().and_then(|d| d.params.clone())
+    changed
 }
 
+/// Expose the last valid preview only for its unchanged document and still-open dialog.
 pub(crate) fn preview<'a>(app: &'a PhotocraftApp, doc: &Document) -> Option<&'a Guides> {
     let draft = app.guide_edit.as_ref()?;
     if draft.edit.context().doc != doc.id || stale(app, draft) || !app.ui.dialogs.iter().any(|d| d.id == draft.dialog) {

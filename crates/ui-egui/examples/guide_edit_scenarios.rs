@@ -12,6 +12,7 @@ struct Driver {
 }
 
 impl Driver {
+    /// Create a fresh synthetic document and two guides for each independent scenario.
     fn new() -> Result<Self, String> {
         let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), Services::default());
         app.run("file.new", json!({"width":400,"height":200,"resolution":100}))?;
@@ -25,6 +26,7 @@ impl Driver {
         Ok(driver)
     }
 
+    /// Run real egui canvas and dialog frames, optionally delivering Escape on the first.
     fn frames(&mut self, escape: bool) {
         self.app.sync_views();
         for frame in 0..3 {
@@ -53,10 +55,12 @@ impl Driver {
         }
     }
 
+    /// Locate the current guide dialog, returning an error after it has closed.
     fn dialog(&self) -> Result<u64, String> {
         self.app.ui.dialogs.iter().find(|d| d.fields.contains_key("__edit")).map(|d| d.id).ok_or("no guide dialog".into())
     }
 
+    /// Dispatch one scenario event through the shipped UI or engine paths.
     fn event(&mut self, event: &Value) -> Result<(), String> {
         match event.get("op").and_then(Value::as_str) {
             Some("begin") => {
@@ -95,6 +99,7 @@ impl Driver {
         Ok(())
     }
 
+    /// Report observable document, preview, dialog and history state after an event.
     fn state(&self, result: Result<(), String>) -> Value {
         let active = self.app.session.active();
         let preview = active.and_then(|st| new_guide_ui::edit_preview(&self.app, &st.doc));
@@ -114,6 +119,7 @@ impl Driver {
     }
 }
 
+/// Exchange one JSONL response per validated protocol request until stdin closes.
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut driver = Driver::new()?;
     let mut out = io::BufWriter::new(io::stdout().lock());
