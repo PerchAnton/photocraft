@@ -44,6 +44,27 @@ fn new_documents_capture_the_working_profile_for_every_mode_and_depth() {
     }
 }
 
+/// The artboard creation path from main retains the same profile defaults and explicit opt-out.
+#[test]
+fn new_artboards_capture_the_working_profile_and_allow_untagged_creation() {
+    let directory = tempfile::tempdir().unwrap();
+    let mut session = configured_session(directory.path());
+    for (name, mode) in [("rgb", ColorMode::Rgb), ("cmyk", ColorMode::Cmyk), ("gray", ColorMode::Grayscale), ("lab", ColorMode::Lab)] {
+        let expected = session.color.working(mode).to_bytes();
+        for depth in [8, 16, 32] {
+            for profile in [None, Some("working"), Some("none")] {
+                let mut params = json!({"width": 3, "height": 2, "mode": name, "depth": depth, "artboard": true});
+                if let Some(profile) = profile {
+                    params["profile"] = json!(profile);
+                }
+                session.execute("file.new", params).unwrap();
+                assert!(session.active().unwrap().doc.has_artboards());
+                assert_eq!(embedded(&session), if profile == Some("none") { None } else { Some(expected.as_slice()) });
+            }
+        }
+    }
+}
+
 /// An explicit profile still overrides the working space, and `none` still requests no ICC tag.
 #[test]
 fn explicit_profiles_and_untagged_creation_keep_their_meaning() {
