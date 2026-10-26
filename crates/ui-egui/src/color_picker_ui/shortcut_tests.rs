@@ -136,7 +136,7 @@ fn assigned_picker_letters_leave_text_input_alone() {
     let mut text = String::new();
     for key in [None, Some(Key::P), Some(Key::O)] {
         input(&ctx, key);
-        egui::Area::new(egui::Id::new("picker-shortcut-typing")).show(&ctx, |ui| {
+        egui::Area::new(egui::Id::unique("picker-shortcut-typing")).show(&ctx, |ui| {
             ui.text_edit_singleline(&mut text).request_focus();
         });
         shortcuts::handle(&mut app, &ctx);
