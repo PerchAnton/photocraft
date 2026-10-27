@@ -11,7 +11,7 @@ rust-version = "1.95"
 
 [workspace.dependencies]
 edit-session = { git = "https://github.com/PerchAnton/edit-session", rev = "28620b8264660ea84a182110cf5894da90281c42" }
-craft-ui = { git = "https://github.com/storytold/craft-libs", rev = "495e5971bc024aa96e6ed318cb6e7cd3a0103184", features = ["serde"] }
+craft-ui = { git = "https://github.com/storytold/craft-libs", rev = "92d392cff132eaf53e13afff77f38b5c11b73aa0", features = ["serde"] }
 # internal
 photocraft-geom = { path = "crates/geom" }
 photocraft-color = { path = "crates/color" }
@@ -40,10 +40,10 @@ photocraft-tablet = { path = "crates/tablet" }
 photocraft-ipp = { path = "crates/ipp" }
 
 # external
-craft-print = { git = "https://github.com/storytold/craft-libs", rev = "495e5971bc024aa96e6ed318cb6e7cd3a0103184" }
-craft-docpath = { version = "0.1.0", git = "https://github.com/storytold/craft-libs", rev = "495e5971bc024aa96e6ed318cb6e7cd3a0103184" }
-craft-jpeg = { git = "https://github.com/storytold/craft-libs", rev = "495e5971bc024aa96e6ed318cb6e7cd3a0103184" }
-craft-update = { git = "https://github.com/storytold/craft-libs", version = "=0.1.0", rev = "495e5971bc024aa96e6ed318cb6e7cd3a0103184", features = ["egui"] }
+craft-print = { git = "https://github.com/storytold/craft-libs", rev = "92d392cff132eaf53e13afff77f38b5c11b73aa0" }
+craft-docpath = { version = "0.1.0", git = "https://github.com/storytold/craft-libs", rev = "92d392cff132eaf53e13afff77f38b5c11b73aa0" }
+craft-jpeg = { git = "https://github.com/storytold/craft-libs", rev = "92d392cff132eaf53e13afff77f38b5c11b73aa0" }
+craft-update = { git = "https://github.com/storytold/craft-libs", version = "=0.1.0", rev = "92d392cff132eaf53e13afff77f38b5c11b73aa0", features = ["egui"] }
 thiserror = "2"
 serde = { version = "1", features = ["derive", "rc"] }
 serde_json = "1"
