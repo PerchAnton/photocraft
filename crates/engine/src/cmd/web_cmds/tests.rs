@@ -8,11 +8,11 @@ fn tmp(name: &str) -> String {
     d.to_string_lossy().into_owned()
 }
 
-/// A 64×48 document: white background, a red square with soft (half-transparent) edges on a
+/// An untagged 64×48 document: white background, a red square with soft (half-transparent) edges on a
 /// transparent layer, and a gradient band.
 fn session(depth: u32) -> Session {
     let mut s = Session::new();
-    s.execute("file.new", json!({"width": 64, "height": 48, "depth": depth, "name": "web.psd", "background": "transparent"})).unwrap();
+    s.execute("file.new", json!({"width": 64, "height": 48, "depth": depth, "name": "web.psd", "background": "transparent", "profile": "none"})).unwrap();
     s.edit("paint", |doc, active| {
         let fmt = doc.pixel_format();
         let mut l = Layer::raster("Logo", fmt);
@@ -1298,4 +1298,22 @@ fn quick_export_exr_preserves_linear_hdr_and_alpha() {
     assert_eq!(std::fs::read(&own).unwrap(), before);
     s.execute("file.export.quickExport", json!({"path": format!("{dir}/explicit.exr")})).unwrap();
     assert_eq!(decode(&format!("{dir}/explicit.exr")).dimensions(), (2, 1));
+}
+
+/// #9325: an untagged document is treated as sRGB, and with Embed Color Profile on the file
+/// says so, as Photoshop's Save for Web does; off, it still carries none.
+#[test]
+fn embed_color_profile_tags_an_untagged_document_srgb() {
+    let mut s = session(8);
+    assert!(s.active().unwrap().doc.icc_profile.is_none(), "a new document is untagged");
+    let dir = tmp("assumed-icc");
+    let profile = |path: &str| decode(path).icc.map(|b| photocraft_cms::Profile::parse(&b).unwrap().description);
+    for (format, ext) in [("jpeg", "jpg"), ("png24", "png")] {
+        let on = format!("{dir}/on.{ext}");
+        s.execute("file.export.saveForWebLegacy", json!({"format": format, "embedIcc": true, "path": on})).unwrap();
+        assert_eq!(profile(&on).as_deref(), Some(photocraft_cms::Builtin::Srgb.description()), "{format}");
+        let off = format!("{dir}/off.{ext}");
+        s.execute("file.export.saveForWebLegacy", json!({"format": format, "embedIcc": false, "path": off})).unwrap();
+        assert_eq!(profile(&off), None, "{format}");
+    }
 }
